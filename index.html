@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>تنقل صديق للبيئة | Eco-Friendly Mobility</title>
+
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Tahoma, Arial, sans-serif;
+      background: #f4f4f4;
+      text-align: center;
+    }
+
+    h2 {
+      margin: 18px 0 10px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      margin-top: -4px;
+      margin-bottom: 10px;
+      font-size: 15px;
+      color: #444;
+    }
+
+    .toolbar {
+      margin: 8px 0 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    select, button {
+      padding: 8px 12px;
+      font-size: 14px;
+      border-radius: 6px;
+      border: 1px solid #bbb;
+      cursor: pointer;
+    }
+
+    #result {
+      margin: 10px auto 8px;
+      min-height: 60px;
+      font-size: 15px;
+      font-weight: bold;
+      line-height: 1.9;
+      width: 90%;
+    }
+
+    .legend {
+      margin: 8px auto 12px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 18px;
+      font-size: 13px;
+      flex-wrap: wrap;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #fff;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+    }
+
+    .legend-line {
+      width: 28px;
+      height: 0;
+      border-top: 5px solid;
+      border-radius: 3px;
+    }
+
+    #map {
+      width: 96%;
+      height: 70vh;
+      margin: 0 auto 20px;
+      border: 2px solid #222;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #ddd;
+    }
+
+    .leaflet-popup-content {
+      line-height: 1.7;
+      text-align: center;
+    }
+
+    .station-label {
+      font-size: 13px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>تنقل صديق للبيئة</h2>
+  <div class="subtitle">Eco-Friendly Mobility</div>
+
+  <div class="toolbar">
+    <label for="mode">وسيلة التنقل | Travel Mode:</label>
+    <select id="mode">
+      <option value="5">🚶 مشي | Walking</option>
+      <option value="15">🚴 دراجة | Bicycle</option>
+      <option value="40">🛴 سكوتر | Scooter</option>
+    </select>
+
+    <button onclick="resetSelection()">إعادة التحديد | Reset</button>
+  </div>
+
+  <div id="result">
+    اضغطي على الخريطة لتحديد نقطة البداية ثم نقطة النهاية<br>
+    Click on the map to choose the start point, then the end point
+  </div>
+
+  <div class="legend">
+    <div class="legend-item">
+      <span class="legend-line" style="border-color:#1565ff;"></span>
+      <span>المسار المقترح | Suggested Route</span>
+    </div>
+
+    <div class="legend-item">
+      <span class="legend-line" style="border-color:red;"></span>
+      <span>شبكة الطرق | Road Network</span>
+    </div>
+
+    <div class="legend-item">
+      <span style="color:blue; font-size:20px;">●</span>
+      <span>محطة باص | Bus Stop</span>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // =========================
+    // إعدادات المشروع
+    // =========================
+    const GEOJSON_FILE = 'paths_new.geojson';
+    const SNAP_MAX_METERS = 120;
+    const GAP_BRIDGE_MAX_METERS = 25;
+    const KEY_DECIMALS = 6;
+
+    // =========================
+    // الخريطة
+    // =========================
+    const map = L.map('map').setView([26.3105, 50.6315], 15);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    // =========================
+    // محطات الباص
+    // =========================
+    const readyBusStations = [
+      { nameAr: "محطة باص 1", nameEn: "Bus Stop 1", lat: 26.31673278338228, lng: 50.6313308083281 },
+      { nameAr: "محطة باص 2", nameEn: "Bus Stop 2", lat: 26.317555228382159, lng: 50.625768265489974 },
+      { nameAr: "محطة باص 3", nameEn: "Bus Stop 3", lat: 26.312424907748529, lng: 50.627583474919462 },
+      { nameAr: "محطة باص 4", nameEn: "Bus Stop 4", lat: 26.312956138265253, lng: 50.627716463347466 },
+      { nameAr: "محطة باص 5", nameEn: "Bus Stop 5", lat: 26.31279785824611, lng: 50.632880363731585 },
+      { nameAr: "محطة باص 6", nameEn: "Bus Stop 6", lat: 26.310866029871026, lng: 50.631938412663025 },
+      { nameAr: "محطة باص 7", nameEn: "Bus Stop 7", lat: 26.309198393882047, lng: 50.630316464426954 },
+      { nameAr: "محطة باص 8", nameEn: "Bus Stop 8", lat: 26.307977330129914, lng: 50.626841236689884 },
+      { nameAr: "محطة باص 9", nameEn: "Bus Stop 9", lat: 26.307995260808958, lng: 50.620813334966755 },
+      { nameAr: "محطة باص 10", nameEn: "Bus Stop 10", lat: 26.304166628571085, lng: 50.626767629796993 },
+      { nameAr: "محطة باص 11", nameEn: "Bus Stop 11", lat: 26.301070016816487, lng: 50.635967436098362 },
+      { nameAr: "محطة باص 12", nameEn: "Bus Stop 12", lat: 26.30435348249583, lng: 50.636089346791121 },
+      { nameAr: "محطة باص 13", nameEn: "Bus Stop 13", lat: 26.30375469907628, lng: 50.637568682889818 },
+      { nameAr: "محطة باص 14", nameEn: "Bus Stop 14", lat: 26.304118022358647, lng: 50.637683773501678 }
+    ];
+
+    // =========================
+    // متغيرات عامة
+    // =========================
+    let geoLayer = null;
+    let startMarker = null;
+    let endMarker = null;
+    let routeLayer = null;
+    let fallbackLayer = null;
+
+    let startPoint = null;
+    let endPoint = null;
+
+    let graph = new Map();
+    let nodes = new Map();
+
+    // =========================
+    // أدوات مساعدة
+    // =========================
+    function formatNumber(v, digits = 2) {
+      return Number(v).toFixed(digits);
+    }
+
+    function toRad(d) {
+      return d * Math.PI / 180;
+    }
+
+    function haversineMeters(a, b) {
+      const R = 6371000;
+      const dLat = toRad(b.lat - a.lat);
+      const dLng = toRad(b.lng - a.lng);
+      const lat1 = toRad(a.lat);
+      const lat2 = toRad(b.lat);
+
+      const x =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.sin(dLng / 2) * Math.sin(dLng / 2) * Math.cos(lat1) * Math.cos(lat2);
+
+      return 2 * R * Math.asin(Math.sqrt(x));
+    }
+
+    function nodeKey(lat, lng) {
+      return `${lat.toFixed(KEY_DECIMALS)},${lng.toFixed(KEY_DECIMALS)}`;
+    }
+
+    function parseNodeKey(key) {
+      const [lat, lng] = key.split(',').map(Number);
+      return { lat, lng };
+    }
+
+    function ensureNode(lat, lng) {
+      const key = nodeKey(lat, lng);
+
+      if (!nodes.has(key)) {
+        nodes.set(key, { lat, lng });
+      }
+
+      if (!graph.has(key)) {
+        graph.set(key, []);
+      }
+
+      return key;
+    }
+
+    function addEdge(keyA, keyB, distance) {
+      if (keyA === keyB) return;
+
+      graph.get(keyA).push({ to: keyB, distance });
+      graph.get(keyB).push({ to: keyA, distance });
+    }
+
+    function isAlreadyConnected(aKey, bKey) {
+      const neighbors = graph.get(aKey) || [];
+      return neighbors.some(n => n.to === bKey);
+    }
+
+    function clearMapLayers() {
+      if (routeLayer) {
+        map.removeLayer(routeLayer);
+        routeLayer = null;
+      }
+      if (fallbackLayer) {
+        map.removeLayer(fallbackLayer);
+        fallbackLayer = null;
+      }
+    }
+
+    function resetSelection() {
+      startPoint = null;
+      endPoint = null;
+
+      if (startMarker) {
+        map.removeLayer(startMarker);
+        startMarker = null;
+      }
+
+      if (endMarker) {
+        map.removeLayer(endMarker);
+        endMarker = null;
+      }
+
+      clearMapLayers();
+
+      document.getElementById('result').innerHTML =
+        'اضغطي على الخريطة لتحديد نقطة البداية ثم نقطة النهاية<br>' +
+        'Click on the map to choose the start point, then the end point';
+    }
+
+    // =========================
+    // إضافة محطات الباص
+    // =========================
+    function addReadyBusStations() {
+      readyBusStations.forEach(station => {
+        L.circleMarker([station.lat, station.lng], {
+          radius: 7,
+          color: 'blue',
+          fillColor: 'blue',
+          fillOpacity: 0.9,
+          weight: 2
+        })
+        .addTo(map);
+      });
+    }
+
+    addReadyBusStations();
+
+    // =========================
+    // تحميل شبكة الطرق
+    // =========================
+    fetch(GEOJSON_FILE)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`تعذر قراءة ملف ${GEOJSON_FILE} | Failed to read ${GEOJSON_FILE}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        geoLayer = L.geoJSON(data, {
+          style: {
+            color: 'red',
+            weight: 4,
+            opacity: 0.95
+          }
+        }).addTo(map);
+
+        if (geoLayer.getLayers().length > 0) {
+          map.fitBounds(geoLayer.getBounds(), { padding: [20, 20] });
+        }
+
+        buildGraphFromGeoJSON(data);
+
+        document.getElementById('result').innerHTML =
+          'اضغطي على الخريطة لتحديد نقطة البداية ثم نقطة النهاية<br>' +
+          'Click on the map to choose the start point, then the end point';
+      })
+      .catch(error => {
+        document.getElementById('result').innerHTML =
+          'خطأ: ' + error.message + '<br>' +
+          'Error: ' + error.message;
+        console.error(error);
+      });
+
+    // =========================
+    // بناء الجراف
+    // =========================
+    function buildGraphFromGeoJSON(data) {
+      graph.clear();
+      nodes.clear();
+
+      if (!data || !Array.isArray(data.features)) {
+        throw new Error('ملف GeoJSON غير صالح | Invalid GeoJSON file');
+      }
+
+      for (const feature of data.features) {
+        if (!feature.geometry) continue;
+
+        const geom = feature.geometry;
+        const type = geom.type;
+        const coords = geom.coordinates;
+
+        if (type === 'LineString') {
+          addLineStringToGraph(coords);
+        } else if (type === 'MultiLineString') {
+          for (const line of coords) {
+            addLineStringToGraph(line);
+          }
+        }
+      }
+
+      bridgeSmallGaps();
+    }
+
+    function addLineStringToGraph(lineCoords) {
+      if (!Array.isArray(lineCoords) || lineCoords.length < 2) return;
+
+      for (let i = 0; i < lineCoords.length - 1; i++) {
+        const c1 = lineCoords[i];
+        const c2 = lineCoords[i + 1];
+
+        const p1 = { lat: c1[1], lng: c1[0] };
+        const p2 = { lat: c2[1], lng: c2[0] };
+
+        const k1 = ensureNode(p1.lat, p1.lng);
+        const k2 = ensureNode(p2.lat, p2.lng);
+
+        const d = haversineMeters(p1, p2);
+        addEdge(k1, k2, d);
+      }
+    }
+
+    function bridgeSmallGaps() {
+      const keys = Array.from(nodes.keys());
+
+      for (let i = 0; i < keys.length; i++) {
+        const aKey = keys[i];
+        const a = nodes.get(aKey);
+
+        for (let j = i + 1; j < keys.length; j++) {
+          const bKey = keys[j];
+          const b = nodes.get(bKey);
+
+          const d = haversineMeters(a, b);
+          if (d > 0 && d <= GAP_BRIDGE_MAX_METERS) {
+            if (!isAlreadyConnected(aKey, bKey)) {
+              addEdge(aKey, bKey, d);
+            }
+          }
+        }
+      }
+    }
+
+    // =========================
+    // أقرب عقدة
+    // =========================
+    function findNearestNode(point) {
+      let bestKey = null;
+      let bestDistance = Infinity;
+
+      for (const [key, node] of nodes.entries()) {
+        const d = haversineMeters(point, node);
+        if (d < bestDistance) {
+          bestDistance = d;
+          bestKey = key;
+        }
+      }
+
+      return {
+        key: bestKey,
+        distance: bestDistance
+      };
+    }
+
+    // =========================
+    // Dijkstra
+    // =========================
+    function dijkstra(startKey, endKey) {
+      const dist = new Map();
+      const prev = new Map();
+      const visited = new Set();
+
+      for (const key of graph.keys()) {
+        dist.set(key, Infinity);
+      }
+      dist.set(startKey, 0);
+
+      while (visited.size < graph.size) {
+        let current = null;
+        let currentDist = Infinity;
+
+        for (const [key, value] of dist.entries()) {
+          if (!visited.has(key) && value < currentDist) {
+            currentDist = value;
+            current = key;
+          }
+        }
+
+        if (current === null) break;
+        if (current === endKey) break;
+
+        visited.add(current);
+
+        const neighbors = graph.get(current) || [];
+        for (const n of neighbors) {
+          if (visited.has(n.to)) continue;
+
+          const alt = dist.get(current) + n.distance;
+          if (alt < dist.get(n.to)) {
+            dist.set(n.to, alt);
+            prev.set(n.to, current);
+          }
+        }
+      }
+
+      if (!prev.has(endKey) && startKey !== endKey) {
+        return null;
+      }
+
+      const path = [];
+      let u = endKey;
+      path.unshift(u);
+
+      while (prev.has(u)) {
+        u = prev.get(u);
+        path.unshift(u);
+      }
+
+      return {
+        path,
+        distanceMeters: dist.get(endKey)
+      };
+    }
+
+    // =========================
+    // اختيار نقاط البداية والنهاية
+    // =========================
+    map.on('click', function (e) {
+      const clicked = { lat: e.latlng.lat, lng: e.latlng.lng };
+
+      if (!startPoint) {
+        startPoint = clicked;
+
+        if (startMarker) map.removeLayer(startMarker);
+        startMarker = L.marker([clicked.lat, clicked.lng]).addTo(map)
+          .bindPopup('نقطة البداية | Start Point')
+          .openPopup();
+
+        document.getElementById('result').innerHTML =
+          'تم تحديد نقطة البداية. اضغطي الآن لتحديد نقطة النهاية<br>' +
+          'Start point selected. Now click to choose the end point';
+        return;
+      }
+
+      if (!endPoint) {
+        endPoint = clicked;
+
+        if (endMarker) map.removeLayer(endMarker);
+        endMarker = L.marker([clicked.lat, clicked.lng]).addTo(map)
+          .bindPopup('نقطة النهاية | End Point')
+          .openPopup();
+
+        calculateRoute();
+      }
+    });
+
+    // =========================
+    // حساب المسار
+    // =========================
+    function calculateRoute() {
+      clearMapLayers();
+
+      if (!startPoint || !endPoint) return;
+
+      const nearestStart = findNearestNode(startPoint);
+      const nearestEnd = findNearestNode(endPoint);
+
+      if (!nearestStart.key || !nearestEnd.key) {
+        document.getElementById('result').innerHTML =
+          'خطأ: لم يتم العثور على شبكة صالحة<br>' +
+          'Error: No valid network found';
+        return;
+      }
+
+      if (nearestStart.distance > SNAP_MAX_METERS || nearestEnd.distance > SNAP_MAX_METERS) {
+        document.getElementById('result').innerHTML =
+          'النقطة المختارة بعيدة عن شبكة الطرق. اختاري نقطة أقرب.<br>' +
+          'The selected point is far from the road network. Please choose a closer point.';
+        return;
+      }
+
+      const result = dijkstra(nearestStart.key, nearestEnd.key);
+
+      if (!result) {
+        document.getElementById('result').innerHTML =
+          '⚠️ لا يوجد مسار متصل بين البداية والنهاية داخل الشبكة<br>' +
+          '⚠️ No connected route was found between the start and end within the network';
+
+        const s = parseNodeKey(nearestStart.key);
+        const e = parseNodeKey(nearestEnd.key);
+
+        fallbackLayer = L.layerGroup([
+          L.polyline(
+            [[startPoint.lat, startPoint.lng], [s.lat, s.lng]],
+            { color: 'orange', weight: 3, dashArray: '6,6' }
+          ),
+          L.polyline(
+            [[endPoint.lat, endPoint.lng], [e.lat, e.lng]],
+            { color: 'orange', weight: 3, dashArray: '6,6' }
+          )
+        ]).addTo(map);
+
+        return;
+      }
+
+      const routeCoords = result.path.map(key => {
+        const p = parseNodeKey(key);
+        return [p.lat, p.lng];
+      });
+
+      const startSnap = parseNodeKey(nearestStart.key);
+      const endSnap = parseNodeKey(nearestEnd.key);
+
+      routeLayer = L.layerGroup([
+        L.polyline(
+          [[startPoint.lat, startPoint.lng], [startSnap.lat, startSnap.lng]],
+          { color: 'orange', weight: 3, dashArray: '6,6' }
+        ),
+        L.polyline(routeCoords, {
+          color: '#1565ff',
+          weight: 7,
+          opacity: 0.95
+        }),
+        L.polyline(
+          [[endSnap.lat, endSnap.lng], [endPoint.lat, endPoint.lng]],
+          { color: 'orange', weight: 3, dashArray: '6,6' }
+        )
+      ]).addTo(map);
+
+      const walkingToStart = nearestStart.distance;
+      const walkingFromEnd = nearestEnd.distance;
+      const totalDistanceKm =
+        (walkingToStart + result.distanceMeters + walkingFromEnd) / 1000;
+
+      const speed = Number(document.getElementById('mode').value);
+      const timeMinutes = (totalDistanceKm / speed) * 60;
+
+      document.getElementById('result').innerHTML =
+        '📍 تم تحديد المسار المقترح | Suggested route selected<br>' +
+        '📏 المسافة | Distance: ' + formatNumber(totalDistanceKm) + ' km<br>' +
+        '⏱ الزمن | Time: ' + formatNumber(timeMinutes) + ' min';
+    }
+  </script>
+</body>
+</html>
